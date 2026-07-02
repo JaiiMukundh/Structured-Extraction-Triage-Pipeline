@@ -1,0 +1,121 @@
+File structure :
+
+supply-chain-event-detection/
+│
+├── data/
+│   ├── distilbert/
+│   │   ├── distilbert_base.jsonl
+│   │   ├── distilbert_test.jsonl
+│   │   ├── distilbert_train.jsonl
+│   │   └── distilbert_val.jsonl
+│   │
+│   ├── qwen/
+│   │   ├── qwen_base.jsonl
+│   │   ├── qwen_test.jsonl
+│   │   ├── qwen_train.jsonl
+│   │   ├── qwen_train.bak.jsonl
+│   │   └── qwen_val.jsonl
+│   │
+│   └── raw/
+│       └── splittable_redo.jsonl
+│
+├── schemas/
+│   └── extraction_schema.json
+│
+├── training/
+│   ├── split_dataset.py
+│   ├── train_distilbert.py
+│   ├── train_qwen_lora.py
+│   └── merge_lora.py
+│
+├── models/
+│   ├── distilbert/
+│   │   ├── config.json
+│   │   ├── model.safetensors
+│   │   ├── tokenizer.json
+│   │   └── tokenizer_config.json
+│   │
+│   └── qwen_lora/
+│       ├── README.md
+│       ├── adapter_config.json
+│       ├── adapter_model.safetensors
+│       ├── chat_template.jinja
+│       ├── tokenizer.json
+│       ├── tokenizer_config.json
+│       ├── epoch_1_metrics.json
+│       ├── epoch_2_metrics.json
+│       └── merged/
+│           ├── chat_template.jinja
+│           ├── config.json
+│           ├── generation_config.json
+│           ├── model.safetensors
+│           ├── tokenizer.json
+│           └── tokenizer_config.json
+│
+├── inference/
+│   ├── extract_baseline_test.py
+│   └── triage_pipeline.py
+│
+├── evaluation/
+│   ├── calculate_parameters.py
+│   ├── compare_extraction.py
+│   ├── compare_validation.py
+│   └── evaluate_forgetting.py
+│
+├── reports/
+│   ├── annotation_guidelines.md
+│   ├── baseline_structured_outputs.jsonl
+│   ├── businessGains.md
+│   ├── comparison_metrics.csv
+│   ├── comparison_metrics.png
+│   ├── dataset_refining.md
+│   ├── final_report.md
+│   └── structured_outputs.jsonl
+│
+├── run_all.py
+├── requirements.txt
+├── NeededInfo.txt
+└── wiki_links.txt
+
+Inference flow :
+
+Text Input (CLI)
+    │
+    ▼
+Linear Text Chunker
+(splits into paragraph-based chunks < 150 words to prevent multi-event confusion)
+    │
+    ▼
+For each chunk:
+    │
+    ▼
+DistilBERT Triage Classifier
+    │
+    ├── label = 0 (No supply chain event) ──► Skip Chunk (returns NoEvent payload)
+    │
+    └── label = 1 (Contains supply chain event)
+            │
+            ▼
+      Qwen2.5 + LoRA (with adapter merged)
+            │
+            ▼
+      Outlines (constrained decoding using extraction_schema.json)
+            │
+            ▼
+      Self-Correction Pass (checks for hallucinations; if found, critiques & regenerates JSON)
+            │
+            ▼
+      Python Fallback Filter (nulls out-of-context names/dates, bypasses numbers/enums)
+            │
+            ▼
+      Event ID Injection (EVT-XXXXXXXX)
+            │
+            ▼
+      Collect structured JSON event
+            │
+            ▼
+      After all chunks:
+      │
+      ├── 0 events extracted: Print "null"
+      ├── 1 event extracted:  Print JSON object
+      └── >1 event extracted: Print JSON list of objects
