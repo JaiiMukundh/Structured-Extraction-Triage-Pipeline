@@ -1,0 +1,22 @@
+{
+  "loading": {
+    "base_model_loading_seconds": 5.212863445281982,
+    "adapter_loading_seconds": 0.725022554397583,
+    "triage_loading_seconds": 0.76324462890625,
+    "base_model_ram_mb": 195.1015625,
+    "adapter_ram_mb": 10.53125,
+    "peak_total_ram_mb": 1438.88671875
+  },
+  "inference": {
+    "baseline": {
+      "latency_seconds": 20.5482337474823,
+      "tokens_generated": 256,
+      "tokens_per_second": 12.458491719823206
+    },
+    "pipeline_lora": {
+      "latency_seconds": 20.49367094039917,
+      "tokens_generated": 256,
+      "tokens_per_second": 12.491661486344412
+    }
+  }
+}
