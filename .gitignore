@@ -33,5 +33,5 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
-models/
+*.safetensors
 data/
