@@ -46,15 +46,12 @@
   "num_attention_heads": 12,
   "num_hidden_layers": 28,
   "num_key_value_heads": 2,
-  "pad_token_id": null,
   "rms_norm_eps": 1e-06,
-  "rope_parameters": {
-    "rope_theta": 1000000.0,
-    "rope_type": "default"
-  },
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
   "sliding_window": null,
   "tie_word_embeddings": true,
-  "transformers_version": "5.0.0",
+  "transformers_version": "4.57.6",
   "use_cache": true,
   "use_sliding_window": false,
   "vocab_size": 151936
