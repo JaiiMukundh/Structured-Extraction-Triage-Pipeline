@@ -2,7 +2,6 @@
   "raw_total": 185,
   "raw_positives": 125,
   "raw_negatives": 60,
-  "raw_pos_ratio": 0.6756756756756757,
   "raw_class_distribution": {
     "ShipmentDelay": 19,
     "FacilityHalt": 51,

@@ -17,8 +17,10 @@ TEST_FILE = BASE / "data" / "qwen" / "qwen_test.jsonl"
 PLOT_FILE = BASE / "reports" / "comparison_metrics.png"
 CSV_FILE = BASE / "reports" /"comparison_metrics.csv"
 MODEL_LABELS = {
-    "pipeline": "Pipeline",
-    "baseline": "Baseline (Qwen Instruct)",
+    "pipeline": "Qwen2.5-1.5B (LoRA)",
+    "tinyllama": "TinyLlama-1.1B (LoRA)",
+    "smollm2": "SmolLM2-1.7B (LoRA)",
+    "baseline": "Baseline (Qwen Instruct)"
 }
 METRIC_LABELS = {
     "precision": "Precision",
@@ -237,7 +239,11 @@ with open(TEST_FILE, "r", encoding="utf-8") as handle:
 
 # Load predictions
 results = []
-files_to_eval = [("pipeline", PIPELINE_FILE)]
+files_to_eval = [
+    ("pipeline", PIPELINE_FILE),
+    ("tinyllama", BASE / "reports" / "TinyLlama-1.1B-Chat-v1.0_pipeline.jsonl"),
+    ("smollm2", BASE / "reports" / "SmolLM2-1.7B-Instruct_pipeline.jsonl")
+]
 if BASELINE_FILE.exists():
     files_to_eval.append(("baseline", BASELINE_FILE))
 

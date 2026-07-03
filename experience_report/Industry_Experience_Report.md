@@ -91,7 +91,7 @@ The dataset contains **185 total samples** (125 positives, 60 negatives; ratio *
 
 * **Small Language Model (SLM):** We chose `Qwen2.5-1.5B` to drastically lower deployment compute costs while maintaining strong instruction-following capabilities.
 * **LoRA:** Parameter-efficient domain adaptation ($r=16$) prevented catastrophic forgetting of base syntax, allowing safe training on a small specialized dataset.
-* **DistilBERT Triage:** By discarding ~99% of non-disruption texts in Stage 1, we save immense generative LLM inference time and token limits.
+* **DistilBERT Triage:** By discarding ~99% of non-disruption texts in Stage 1, we save immense generative LLM inference time and token limits. Crucially, this classifier was deliberately thresholded to be heavily **recall-biased**—achieving a validation recall of **99.21%** (F1: 89.3%) at the cost of precision. This architectural decision guarantees that virtually zero true events are dropped, while still filtering enough noise to make the generative pipeline economically viable.
 * **Outlines / Constrained Tools:** Guarantee 100% schema compliance by masking logits during generation.
 * **Balanced Dataset:** Prevented the model from developing heavy taxonomy bias towards high-frequency events like `FacilityHalt`.
 
@@ -105,10 +105,12 @@ Comparison on the test split with vs without our methodology:
 | Model / Configuration | Precision | Recall | F1-Score | Schema Validity |
 |---|---|---|---|---|
 | **Baseline (Qwen Instruct Raw)** | 47.0% | 47.6% | 46.8% | 23.3% |
-| **Pipeline (DistilBERT + LoRA)** | **72.5%** | **67.6%** | **69.2%** | **100.0%** |
+| **Qwen2.5-1.5B (DistilBERT + LoRA)** | **72.5%** | **67.6%** | **69.2%** | **100.0%** |
+| **SmolLM2-1.7B (DistilBERT + LoRA)** | 66.2% | 57.0% | 60.2% | **100.0%** |
+| **TinyLlama-1.1B (DistilBERT + LoRA)** | 53.3% | 50.3% | 50.6% | **100.0%** |
 
 ### 2. Infrastructure Details and Run Variance
-* **Hardware Configuration:** Training on NVIDIA GPU (8GB VRAM). Inference benchmarked strictly on local CPU constraints.
+* **Hardware Configuration:** Training on NVIDIA T4 GPU. Inference benchmarked strictly on local CPU constraints.
 * **Training Duration:** ~45 minutes for 3 epochs on the balanced dataset.
 * **Number of Runs:** 3
 * **Variance Across Runs:** Extremely low ($\sigma^2 pprox 0.004$ F1).
@@ -160,7 +162,7 @@ Despite strong metrics, operational monitoring revealed three primary failure ca
 
 ## VII. Generalization and Future Work
 While this implementation is robust, we identify clear paths for generalization:
-* **Small Model Scaling:** Future work will benchmark this pipeline against other highly capable SLMs, including **TinyLlama-1.1B**, **Gemma-2-2B**, and **SmolLM2-1.7B**, to compare JSON-constrained instruction fidelity.
+* **Small Model Scaling:** As demonstrated in our system evaluation, we successfully generalized this pipeline to other SLMs (**TinyLlama-1.1B**, **SmolLM2-1.7B**). Qwen2.5-1.5B significantly outperformed the others in extraction fidelity, highlighting that base model architecture matters as much as parameter count. Future work will expand this evaluation to the Gemma-2 family.
 * **Conference Submission:** This implementation provides a rigorous framework suitable for peer review. We plan to submit this architecture to the **IEEE/ACM International Conference on Software Engineering (ICSE) - SEIP Track** or the **EMNLP Industry Track** to validate these operational lessons against broader community standards.
 
 ---
