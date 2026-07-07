@@ -134,7 +134,7 @@ if not chunks:
     raise SystemExit(0)
 
 # Load Qwen model and resources only if we have chunks to process
-qwen_tokenizer = AutoTokenizer.from_pretrained(QWEN_DIR, trust_remote_code=True)
+qwen_tokenizer = AutoTokenizer.from_pretrained(QWEN_DIR, trust_remote_code=True, fix_mistral_regex=True)
 qwen_model = AutoModelForCausalLM.from_pretrained(
     QWEN_DIR,
     trust_remote_code=True,
@@ -172,7 +172,7 @@ for chunk in chunks:
                     "- Classify an event as SupplierInsolvency ONLY if there is explicit mention of legal or financial failure, such as declaring bankruptcy, filing for Chapter 11 reorganization, insolvency, liquidation, defaulting on debts, receivership, or experiencing severe liquidity crises leading to restructuring.\n\n"
                     "Example 1:\n"
                     "Text: In other news, global logistics giant [LOGISTICS_COMPANY] announced a 3-day halt of operations at [PORT_LOCATION] due to a severe labor strike starting on [SOURCE_TIMESTAMP].\n"
-                    "Output: {\"event_type\": \"FacilityHalt\", \"source_timestamp\": \"[SOURCE_TIMESTAMP]\", \"text_evidence\": \"halt of operations at [PORT_LOCATION] due to a severe labor strike starting on 2023-11-05\", \"arguments\": {\"operator\": \"[LOGISTICS_COMPANY]\", \"facility_location\": \"[PORT_LOCATION]\", \"disruption_type\": \"Labor_Dispute\", \"start_date\": \"2023-11-05T00:00:00Z\", \"expected_restart_date\": null}}\n\n"
+                    "Output: {\"event_type\": \"ShipmentDelay\", \"source_timestamp\": \"[SOURCE_TIMESTAMP]\", \"text_evidence\": \"halt of operations at [PORT_LOCATION] due to a severe labor strike starting on 2023-11-05\", \"arguments\": {\"operator\": \"[LOGISTICS_COMPANY]\", \"facility_location\": \"[PORT_LOCATION]\", \"disruption_type\": \"Labor_Dispute\", \"start_date\": \"2023-11-05T00:00:00Z\", \"expected_restart_date\": null}}\n\n"
                     "Example 2:\n"
                     "Text: The CEO mentioned they are launching a new product line next week.\n"
                     "Output: {\"event_type\": \"NoEvent\"}"
