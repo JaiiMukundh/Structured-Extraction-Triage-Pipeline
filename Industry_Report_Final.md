@@ -68,7 +68,7 @@ All source documents were derived from publicly available Wikipedia event articl
 | Bankruptcies and Insolvencies | Hanjin Shipping, Carillion, Takata, Britishvolt, Delphi Corporation |
 | Infrastructure and Logistics | 2021 Suez Canal blockage, Port of Rotterdam, Forties Pipeline System |
 
-Source texts were paraphrased at the paragraph level to avoid direct copyright reproduction and to introduce lexical diversity. Each event was used to generate multiple records with varying surface forms and levels of detail.
+Source texts were extracted verbatim from Wikipedia introductory paragraphs to retain authentic phrasing and factual accuracy, representing real-world historical data, requiring proper attribution under the CC BY-SA 4.0 license.
 
 ### 3.3 Dataset Statistics
 

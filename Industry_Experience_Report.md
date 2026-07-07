@@ -88,7 +88,7 @@ All source documents were derived from publicly available Wikipedia event articl
 | Bankruptcies & Insolvencies | Hanjin Shipping, Carillion, Takata, Britishvolt, Westinghouse Electric, OneWeb, Delphi Corporation |
 | Infrastructure & Logistics | 2021 Suez Canal (Ever Given), Port of Rotterdam, Forties Pipeline System |
 
-Source texts were paraphrased and re-authored at the paragraph level to avoid direct copyright reproduction and to introduce lexical diversity. Each source event was used to generate multiple training records with varying surface forms, levels of detail, and entity references.
+Source texts were extracted verbatim from Wikipedia introductory paragraphs. Each source event corresponds to real-world historical records to ensure the model learns from authentic phrasing and factual contexts, though this requires proper attribution to Wikipedia under the CC BY-SA 4.0 license.
 
 ### 3.3 Dataset Statistics and the Raw Imbalance Problem
 
