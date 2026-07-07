@@ -10,15 +10,16 @@ A resource-efficient, two-stage pipeline for detecting and extracting structured
 
 Enterprise organizations monitor large volumes of news and operational documents to detect supply chain risks. Sending every document to a large generative LLM is computationally expensive. This pipeline solves that with a **two-stage triage architecture**:
 
-1. **Stage 1 — Triage (DistilBERT, 66M params):** Fast CPU-based binary classifier that filters out ~99% of non-event documents.
-2. **Stage 2 — Extraction (Qwen2.5-1.5B + LoRA + Outlines):** Structured JSON event extraction, only triggered for documents that pass triage.
+1. **Stage 1 — Triage (DistilBERT, 66M params):** Fast CPU-based binary classifier that routes out non-event documents in ~15 ms per chunk.
+2. **Stage 2 — Extraction (Qwen2.5-1.5B + LoRA + Outlines):** Structured JSON event extraction, only triggered for documents that pass triage (~8 s per chunk on CPU).
 
 ### Supported Event Types
+
 | Event Type | Captures |
 |---|---|
-| `FacilityHalt` | Physical production stoppages (fires, strikes, disasters) |
+| `FacilityHalt` | Physical production stoppages (fires, strikes, disasters, cyberattacks) |
 | `ShipmentDelay` | Transit and carrier delays |
-| `SupplierInsolvency` | Bankruptcy and financial restructuring |
+| `SupplierInsolvency` | Bankruptcy, liquidation, and financial restructuring |
 | `TariffChange` | Customs duty and trade policy changes |
 | `ForceMajeure` | Legal force majeure declarations |
 
@@ -27,48 +28,108 @@ Enterprise organizations monitor large volumes of news and operational documents
 ## Repository Structure
 
 ```
-supply-chain-event-detection/
+Triage_Pipeline/
 │
 ├── data/
 │   ├── distilbert/          # Binary triage classification datasets
-│   ├── qwen/                # Structured extraction datasets (JSONL)
-│   └── raw/                 # Master unified dataset (splittable_redo.jsonl)
+│   │   ├── distilbert_base.jsonl   (196 rows: 125 pos / 71 neg)
+│   │   ├── distilbert_train.jsonl  (137 rows: 83 pos / 54 neg)
+│   │   ├── distilbert_val.jsonl    (29 rows)
+│   │   └── distilbert_test.jsonl   (30 rows)
+│   │
+│   ├── qwen/                # Structured extraction datasets (positives only)
+│   │   ├── qwen_base.jsonl         (175 rows, balanced ~35/class)
+│   │   ├── qwen_train.jsonl        (115 rows)
+│   │   ├── qwen_val.jsonl          (30 rows, 6/class)
+│   │   └── qwen_test.jsonl         (30 rows, 6/class)
+│   │
+│   ├── raw/
+│   │   └── splittable_redo.jsonl   # Master unified dataset (351 rows: 280 pos / 71 neg)
+│   │
+│   └── split_dataset_test/  # Auto-generated splits from raw master
+│       ├── distilbert/      # train/val/test for DistilBERT
+│       └── qwen/            # train/val/test for Qwen (positives only)
 │
 ├── schemas/
-│   └── extraction_schema.json   # JSON schema governing all extractions
+│   └── extraction_schema.json   # JSON Schema governing all extractions
 │
 ├── training/
-│   ├── split_dataset.py     # Splits unified dataset for both models (no leakage)
+│   ├── split_dataset.py     # Reads splittable_redo.jsonl → outputs split_dataset_test/
 │   ├── train_distilbert.py  # Fine-tunes DistilBERT for binary triage
 │   ├── train_qwen_lora.py   # Fine-tunes Qwen2.5-1.5B with LoRA
 │   └── merge_lora.py        # Merges LoRA adapter into base model
 │
 ├── models/
 │   ├── distilbert/          # Fine-tuned DistilBERT weights (gitignored: .safetensors)
-│   └── qwen_lora/           # LoRA adapter + merged model (gitignored: .safetensors)
+│   ├── qwen_lora/           # LoRA adapter + merged model (gitignored: .safetensors)
+│   ├── SmolLM2-1.7B-Instruct_lora/  # Comparison model (gitignored: .safetensors)
+│   └── TinyLlama-1.1B-Chat-v1.0_lora/  # Comparison model (gitignored: .safetensors)
 │
 ├── inference/
-│   ├── triage_pipeline.py   # Main CLI inference script (end-to-end)
-│   └── extract_baseline_test.py  # Zero-shot baseline for comparison
+│   ├── triage_pipeline.py         # Main CLI inference script (end-to-end)
+│   └── extract_baseline_test.py   # Zero-shot baseline for comparison
 │
 ├── evaluation/
-│   ├── compare_extraction.py     # F1 / Precision / Recall / Schema Validity
-│   ├── compare_validation.py     # Schema validation only
-│   ├── calculate_parameters.py   # LoRA parameter statistics
-│   └── evaluate_forgetting.py    # Catastrophic forgetting assessment
+│   ├── compare_extraction.py      # F1 / Precision / Recall / Schema Validity
+│   ├── compare_validation.py      # Schema validation only
+│   ├── evaluate_distilbert.py     # DistilBERT classifier evaluation
+│   ├── calculate_parameters.py    # LoRA parameter statistics
+│   └── evaluate_forgetting.py     # Catastrophic forgetting assessment
+│
+├── experience_report/
+│   ├── calculate_metrics.py       # Generates all JSON metric files
+│   ├── generate_heatmaps.py       # LoRA weight heatmap generation
+│   ├── dataset_metrics.json
+│   ├── extraction_metrics.json
+│   ├── lora_weight_metrics.json
+│   ├── perplexity_metrics.json
+│   ├── system_performance_metrics.json
+│   └── variance_metrics.json
 │
 ├── reports/
-│   ├── final_report.md           # Full technical report
-│   ├── businessGains.md          # Business ROI analysis
-│   ├── dataset_refining.md       # Dataset curation strategy
-│   ├── annotation_guidelines.md  # Human annotation guidelines
-│   └── comparison_metrics.png    # Results visualization
+│   ├── structured_outputs.jsonl        # Pipeline predictions (30 test samples)
+│   ├── baseline_structured_outputs.jsonl  # Zero-shot baseline predictions
+│   ├── SmolLM2-1.7B-Instruct_pipeline.jsonl
+│   ├── TinyLlama-1.1B-Chat-v1.0_pipeline.jsonl
+│   ├── comparison_metrics.csv          # Aggregated model comparison results
+│   ├── comparison_metrics.png          # Results bar chart
+│   └── lora_heatmaps.png               # Layer-wise LoRA weight norm heatmap
 │
-├── run_all.py               # End-to-end pipeline runner
-└── requirements.txt         # Python dependencies
+├── Industry_Experience_Report.md  # Full technical report
+├── run_all.py                     # End-to-end pipeline runner
+├── requirements.txt               # Python dependencies
+└── NeededInfo.txt                 # Project reference notes
 ```
 
-> **Note:** Model weight files (`.safetensors`) are excluded from this repository due to size. Download or train them following the instructions below.
+> **Note:** Model weight files (`.safetensors`) are excluded from this repository due to size. Train them following the instructions below, or download from the companion release.
+
+---
+
+## Dataset
+
+The unified master dataset is `data/raw/splittable_redo.jsonl`. It is the single source of truth that feeds both model training stages.
+
+| Stage | Total | Positive | Negative | Positive Rate |
+|---|---|---|---|---|
+| Raw master (`splittable_redo.jsonl`) | **351** | **280** | **71** | 79.8% |
+| DistilBERT base | 196 | 125 | 71 | 63.8% |
+| DistilBERT train | 137 | 83 | 54 | 60.6% |
+| DistilBERT val | 29 | 24 | 5 | 82.8% |
+| DistilBERT test | 30 | 18 | 12 | 60.0% |
+| Qwen base | 175 | 175 | — | 100% |
+| Qwen train | 115 | 115 | — | 100% |
+| Qwen val | 30 | 30 | — | 100% |
+| Qwen test | 30 | 30 | — | 100% |
+
+**Qwen base event type distribution** (near-uniform, 35 per class):
+
+| Event Type | Count | % |
+|---|---|---|
+| FacilityHalt | 36 | 20.6% |
+| ShipmentDelay | 36 | 20.6% |
+| SupplierInsolvency | 35 | 20.0% |
+| TariffChange | 35 | 20.0% |
+| ForceMajeure | 33 | 18.9% |
 
 ---
 
@@ -85,7 +146,7 @@ pip install -r requirements.txt
 ```bash
 python training/split_dataset.py
 ```
-This creates aligned train/val/test splits for both DistilBERT and Qwen under `data/`.
+Reads `data/raw/splittable_redo.jsonl` and writes stratified train/val/test splits for both models into `data/split_dataset_test/`.
 
 ### 3. Train the Models
 ```bash
@@ -101,7 +162,6 @@ python training/merge_lora.py
 
 ### 4. Run Inference
 ```bash
-# Single text input via CLI
 python inference/triage_pipeline.py "A major port strike has halted container shipments at Rotterdam for 3 days."
 ```
 
@@ -131,17 +191,17 @@ python evaluation/compare_extraction.py
 
 ## Key Results
 
-| Model / Configuration | Precision | Recall | F1-Score | Schema Validity |
-|---|---|---|---|---|
-| Baseline (Qwen Zero-Shot) | 42.60% | 41.82% | 41.62% | 33.33% |
-| Pipeline V1 (r=4 LoRA) | 45.98% | 39.39% | 49.78% | 100.00% |
-| Pipeline V2 (Refined Prompt, Underfit) | 34.02% | 27.09% | 27.80% | 100.00% |
-| **Pipeline V3 (Optimized r=16)** | **72.90%** | **71.22%** | **71.88%** | **100.00%** |
+| Model / Configuration | Precision | Recall | F1-Score | Top-Level F1 | Arguments F1 | Schema Validity |
+|---|---|---|---|---|---|---|
+| Baseline (Qwen Zero-Shot) | 46.96% | 47.65% | 46.81% | 58.40% | 39.28% | 23.33% |
+| **Qwen2.5-1.5B (LoRA)** | **72.51%** | **67.61%** | **69.24%** | **83.97%** | **59.23%** | **100.00%** |
+| SmolLM2-1.7B (LoRA) | 66.20% | 57.01% | 60.21% | 73.19% | 50.06% | 100.00% |
+| TinyLlama-1.1B (LoRA) | 53.28% | 50.28% | 50.58% | 52.15% | 49.01% | 100.00% |
 
-- **72.7% relative F1 improvement** over zero-shot baseline
-- **100% schema validity** via Outlines constrained decoding
-- **~99% cost reduction** in production (only ~1% of docs trigger LLM inference)
-- Entire pipeline runs in **~7 GB RAM** — no GPU required for inference
+- **47.9% relative F1 improvement** over zero-shot baseline (46.81% → 69.24%)
+- **100% schema validity** via Outlines constrained decoding (vs. 23.33% baseline)
+- **~92–99% cost reduction** in production (only 20–64% of docs trigger LLM inference depending on document stream)
+- Entire pipeline runs in **~1.64 GB RAM** on CPU — no GPU required for inference
 
 ---
 
@@ -153,8 +213,19 @@ python evaluation/compare_extraction.py
 | Rank (r) | 16 |
 | Alpha (α) | 32 |
 | Target Modules | `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj` |
-| Trainable Parameters | 18.46M (1.19% of base) |
+| Trainable Parameters | 18.46M (1.196% of base) |
 | Optimizer Memory | ~147.7 MB (vs ~12.3 GB full fine-tuning) |
+| Adapter File Size | 70.5 MB |
+
+---
+
+## Training Progression (Qwen2.5-1.5B LoRA)
+
+| Epoch | Train Loss | Top-Level F1 (Val) | Arguments F1 (Val) |
+|---|---|---|---|
+| 1 | 0.1923 | 34.21% | 36.38% |
+| 2 | 0.0492 | 52.05% | 37.56% |
+| 3 | ~0.0114 | ~83.97% | ~59.23% |
 
 ---
 
