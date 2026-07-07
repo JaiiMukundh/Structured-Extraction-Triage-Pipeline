@@ -167,7 +167,7 @@ A cyberattack can produce either a FacilityHalt (if the attack halts production)
 
 The most fundamental decision was splitting the pipeline into a classification stage and an extraction stage. A Qwen2.5-1.5B inference pass takes approximately 14 seconds on CPU. In a realistic production corpus with a 20% event rate, routing every document to the extraction model wastes 80% of compute on non-events. DistilBERT processes the same document in roughly 15 milliseconds. The two-stage design routes non-events to a near-zero-cost rejection and only invokes Qwen when the triage stage detects a likely event.
 
-False positives at the triage stage are harmless: Qwen receives the document and returns `{"event_type": "NoEvent"}`. False negatives are catastrophic: the event is permanently dropped. This asymmetric cost structure drives the recall-biased training strategy described in Section 4.3.
+While false positives at the triage stage pass non-events to Qwen (which may struggle since its training set lacks NoEvent examples), this is preferable to false negatives, which are catastrophic as the event is permanently dropped. This asymmetric cost structure drives the recall-biased training strategy described in Section 4.3.
 
 ### 4.2 LoRA Over QLoRA or Full Fine-Tuning
 
