@@ -45,16 +45,12 @@ Triage_Pipeline/
 │   │
 │   ├── raw/
 │   │   └── splittable_redo.jsonl   # Master unified dataset (351 rows: 280 pos / 71 neg)
-│   │
-│   └── split_dataset_test/  # Auto-generated splits from raw master
-│       ├── distilbert/      # train/val/test for DistilBERT
-│       └── qwen/            # train/val/test for Qwen (positives only)
 │
 ├── schemas/
 │   └── extraction_schema.json   # JSON Schema governing all extractions
 │
 ├── training/
-│   ├── split_dataset.py     # Reads splittable_redo.jsonl → outputs split_dataset_test/
+│   ├── split_dataset.py     # Reads splittable_redo.jsonl → outputs to data/
 │   ├── train_distilbert.py  # Fine-tunes DistilBERT for binary triage
 │   ├── train_qwen_lora.py   # Fine-tunes Qwen2.5-1.5B with LoRA
 │   └── merge_lora.py        # Merges LoRA adapter into base model
@@ -76,16 +72,7 @@ Triage_Pipeline/
 │   ├── calculate_parameters.py    # LoRA parameter statistics
 │   └── evaluate_forgetting.py     # Catastrophic forgetting assessment
 │
-├── experience_report/
-│   ├── calculate_metrics.py       # Generates all JSON metric files
-│   ├── generate_heatmaps.py       # LoRA weight heatmap generation
-│   ├── dataset_metrics.json
-│   ├── extraction_metrics.json
-│   ├── lora_weight_metrics.json
-│   ├── perplexity_metrics.json
-│   ├── system_performance_metrics.json
-│   └── variance_metrics.json
-│
+
 ├── reports/
 │   ├── structured_outputs.jsonl        # Pipeline predictions (30 test samples)
 │   ├── baseline_structured_outputs.jsonl  # Zero-shot baseline predictions
@@ -136,6 +123,8 @@ The unified master dataset is `data/raw/splittable_redo.jsonl`. It is the single
 ## Quickstart
 
 ### 1. Install Dependencies
+> **Requirement:** Python 3.11 is required.
+
 ```bash
 python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
@@ -146,7 +135,7 @@ pip install -r requirements.txt
 ```bash
 python training/split_dataset.py
 ```
-Reads `data/raw/splittable_redo.jsonl` and writes stratified train/val/test splits for both models into `data/split_dataset_test/`.
+Reads `data/raw/splittable_redo.jsonl` and writes stratified train/val/test splits for both models into `data/`.
 
 ### 3. Train the Models
 ```bash

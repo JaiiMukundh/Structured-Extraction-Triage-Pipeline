@@ -23,9 +23,9 @@ Annotation-guideline compliance enforced at write time:
 Splits: 70 % train | 15 % val | 15 % test (stratified by has_disruption)
 Random seed: 42 (reproducible)
 
-Output directory: data/split_dataset_test/
-  data/split_dataset_test/distilbert/distilbert_{train,val,test}.jsonl
-  data/split_dataset_test/qwen/qwen_{train,val,test}.jsonl
+Output directory: data/
+  data/distilbert/distilbert_{train,val,test}.jsonl
+  data/qwen/qwen_{train,val,test}.jsonl
 """
 
 import json
@@ -38,7 +38,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1]
 RAW_INPUT = BASE / "data" / "raw" / "splittable_redo.jsonl"
 
-OUTPUT_BASE = BASE / "data" / "split_dataset_test"
+OUTPUT_BASE = BASE / "data"
 QWEN_DIR = OUTPUT_BASE / "qwen"
 DISTILBERT_DIR = OUTPUT_BASE / "distilbert"
 

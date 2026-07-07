@@ -4,10 +4,11 @@ import time
 import subprocess
 import numpy as np
 from pathlib import Path
+import sys
 
 BASE = Path(__file__).resolve().parents[1]
 REPORTS_DIR = BASE / "reports"
-OUTPUT_DIR = BASE / "experience_report" / "variance_metrics.json"
+OUTPUT_DIR = BASE / "reports" / "variance_metrics.json"
 
 SEEDS = [42, 1337, 2026]
 f1_scores = []
@@ -30,16 +31,19 @@ for seed in SEEDS:
         
     try:
         # Run training
-        subprocess.run(["python", str(train_script_path)], check=True)
+        subprocess.run([sys.executable, str(train_script_path)], check=True)
+        
+        print(f"Merging LoRA adapter for SEED = {seed}...")
+        subprocess.run([sys.executable, str(BASE / "training" / "merge_lora.py")], check=True)
         
         # Run evaluation directly instead of the full pipeline to save time, or run the pipeline?
         # The user's exact benchmark is in compare_extraction.py or run_batch_inference.py
         # Actually, running run_batch_inference.py and then compare_extraction.py yields the F1.
         print(f"Running inference for SEED = {seed}...")
-        subprocess.run(["python", str(BASE / "inference" / "run_batch_inference.py")], check=True)
+        subprocess.run([sys.executable, str(BASE / "inference" / "run_batch_inference.py")], check=True)
         
         print(f"Running evaluation for SEED = {seed}...")
-        subprocess.run(["python", str(BASE / "evaluation" / "compare_extraction.py")], check=True)
+        subprocess.run([sys.executable, str(BASE / "evaluation" / "compare_extraction.py")], check=True)
         
         # Read the resulting F1 from comparison_metrics.csv
         with open(REPORTS_DIR / "comparison_metrics.csv", "r") as f:

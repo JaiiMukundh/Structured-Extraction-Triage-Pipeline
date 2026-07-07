@@ -14,7 +14,7 @@ DATA_DIR = BASE / "data"
 RAW_FILE = DATA_DIR / "raw" / "splittable_redo.jsonl"
 DISTILBERT_DIR = DATA_DIR / "distilbert"
 QWEN_DIR = DATA_DIR / "qwen"
-REPORTS_DIR = BASE / "experience_report"
+REPORTS_DIR = BASE / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 CSV_FILE = BASE / "reports" / "comparison_metrics.csv"
 

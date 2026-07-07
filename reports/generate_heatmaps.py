@@ -6,7 +6,7 @@ import numpy as np
 
 BASE = Path(__file__).resolve().parents[1]
 REPORTS_DIR = BASE / "reports"
-JSON_FILE = BASE / "experience_report" / "lora_weight_metrics.json"
+JSON_FILE = BASE / "reports" / "lora_weight_metrics.json"
 
 if not JSON_FILE.exists():
     raise FileNotFoundError(f"Missing {JSON_FILE}. Run calculate_metrics.py first.")
