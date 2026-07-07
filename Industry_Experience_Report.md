@@ -416,7 +416,7 @@ The 74.4% reduction in training loss from epoch 1 to epoch 2 (0.1923 → 0.0492)
 
 The pipeline's near-perfect performance on this example illustrates the model's core capability: it correctly identifies the minimal evidence span, maps the strike enumeration, and resolves both temporal fields from the narrative. The minor precision penalty comes from "General Motors" vs. "General Motors Company" — a legitimate question of entity normalisation that token-F1 partially captures.
 
-**Example B: Misclassification — FacilityHalt Over-Prediction (Cyberattack/ShipmentDelay)**
+**Example B: Misclassification — Extreme Class Collapse (ShipmentDelay to FacilityHalt)**
 
 | Field | Gold | Pipeline Prediction |
 |---|---|---|
@@ -425,19 +425,19 @@ The pipeline's near-perfect performance on this example illustrates the model's 
 | carrier | Ocean Network Express | — (wrong schema) |
 | delay_duration_days | 6 | — (wrong schema) |
 
-A ransomware attack on DP World Australia (November 2023) caused both a port operational halt and a downstream shipment delay. The source text describes the physical disruption in considerable detail before mentioning the 6-day delay to Ocean Network Express. The pipeline, trained primarily on FacilityHalt examples (the largest class in the raw data), anchors on the physical disruption description rather than the shipping delay consequence. This is a direct expression of the raw corpus class imbalance bias: despite balancing the Qwen training set, FacilityHalt's prior dominance left a distributional fingerprint in the model's event-type classification boundary.
+A ransomware attack on DP World Australia (November 2023) caused both a port operational halt and a downstream shipment delay. The source text describes the physical disruption in considerable detail before mentioning the 6-day delay to Ocean Network Express. The pipeline completely collapses on the `ShipmentDelay` class in the test set, instead anchoring on the physical disruption description. This suggests that `FacilityHalt` acts as a strong semantic attractor state for logistics interruptions, capturing events that should be classified as downstream delays.
 
-**Example C: Schema Failure in Baseline (Invented Event Type)**
+**Example C: Schema Failure in Baseline (Structural Inconsistency)**
 
-The baseline model generates `{"event_type": "LaborDispute", "source_timestamp": "2024-10-01", ...}` for the 2024 US Port Strike example. `LaborDispute` is not a defined event type in the schema — it is a hallucination drawn from the base model's general knowledge of labor relations terminology. The schema validity check flags this immediately, and the baseline's 33.33% validity rate reflects that roughly two-thirds of all baseline outputs contain comparable schema violations.
+While the baseline model successfully outputs valid event types from the schema (e.g., `SupplierInsolvency`, `FacilityHalt`), it struggles significantly with nested structures and strict JSON formatting. The schema validity check flags these structural issues immediately, and the baseline's 23.33% validity rate (7/30 pass) reflects that over three-quarters of all baseline outputs contain structural schema violations (e.g., missing required arguments or malformed JSON). 
 
-Additionally, the baseline's timestamp format for this example (`"2024-10-01"`) is plain ISO date without the required time component, whereas the gold annotation is `"2024-10-01T00:00:00Z"`. The pipeline, trained on ISO 8601 full-datetime format examples, consistently produces the correct format.
+However, it is notable that the baseline correctly inferred the ISO 8601 timestamp format (`YYYY-MM-DDTHH:MM:SSZ`) for all predictions without explicit few-shot examples, demonstrating strong prior knowledge of standard temporal formats.
 
-**Example D: Timestamp Hallucination Fingerprint**
+**Example D: Perfect Null-Handling for Timestamps**
 
-In 10 out of 30 test examples, the gold annotation has `source_timestamp: null` (the source text contains no explicit date or time reference). The pipeline correctly returns `null` in 0 of these 10 cases — it hallucinates a timestamp in all of them. Strikingly, 7 of the 10 hallucinated timestamps are identical: `"2023-11-05T00:00:00Z"`. This is not a random hallucination. The system prompt for Qwen includes a `FacilityHalt` extraction example with the placeholder timestamp `[SOURCE_TIMESTAMP]` rendered as `"2023-11-05"`. When the model encounters a text with no extractable date, it falls back to the example timestamp from the few-shot prompt rather than returning `null`.
+In 10 out of 30 test examples, the gold annotation has `source_timestamp: null` (the source text contains no explicit date or time reference). A common failure mode in generative extraction is model hallucination—where the model invents a plausible date or aggressively extracts a semantically unrelated date from the text rather than leaving the field empty. 
 
-This is a textbook case of **few-shot example contamination**: the model's few-shot examples are not only teaching the output format, they are also providing a fallback anchor value that the model retrieves when it is uncertain. The fix is to add at least one null-timestamp example to the system prompt, explicitly demonstrating that the model should return `null` when no date information is present rather than defaulting to the example date.
+Strikingly, the Qwen LoRA pipeline correctly returned `null` for all 10 of these cases (100% accuracy on null timestamps). This demonstrates that the model successfully learned the `null` assignment behavior during fine-tuning and can robustly identify the *absence* of information, rather than defaulting to hallucination.
 
 ### 6.4 Per-Class Prediction Analysis
 
@@ -445,23 +445,25 @@ The pipeline's FacilityHalt over-prediction bias is visible in the per-class cou
 
 | Event Type | Gold (test) | Pipeline Predicted | Delta |
 |---|---|---|---|
-| FacilityHalt | 6 | **10** | **+4 over-predicted** |
+| FacilityHalt | 6 | **12** | **+6 over-predicted** |
+| SupplierInsolvency | 6 | 6 | 0 |
+| ForceMajeure | 6 | 6 | 0 |
 | TariffChange | 6 | 6 | 0 |
-| ForceMajeure | 6 | 5 | -1 |
-| ShipmentDelay | 6 | 5 | -1 |
-| SupplierInsolvency | 6 | **4** | **-2 under-predicted** |
+| ShipmentDelay | 6 | **0** | **-6 under-predicted** |
 
-The pipeline over-predicts FacilityHalt and under-predicts SupplierInsolvency, which is the residual signature of FacilityHalt's dominance in the raw corpus (30.7% of positive records in `splittable_redo.jsonl`, versus 19.6% for SupplierInsolvency). This bias persists despite the near-uniform Qwen training set (FacilityHalt and ShipmentDelay are capped at 24 training examples each), suggesting that it is driven not by training label frequencies but by the *semantic similarity* between FacilityHalt and other event types at the language surface level. SupplierInsolvency events (factory shutdowns due to bankruptcy filings) and ForceMajeure events (facility halts due to natural disasters) both describe physical operational disruptions, making them susceptible to FacilityHalt misclassification even when the training set is balanced.
+The pipeline exhibits an extreme class collapse regarding `ShipmentDelay`, completely failing to predict it (0 predictions vs 6 gold) while severely over-predicting `FacilityHalt` (12 predictions vs 6 gold). This bias persists despite the near-uniform Qwen training set, suggesting that it is driven not by training label frequencies but by the *semantic similarity* between FacilityHalt and ShipmentDelay at the language surface level. Texts describing shipment delays often mention physical logistics nodes (ports, terminals) and operational bottlenecks, making them highly susceptible to FacilityHalt misclassification.
 
 ### 6.5 Baseline Schema Failure Analysis
 
-The zero-shot baseline achieves only 33.33% schema validity (10/30 examples pass). The 20 failures are attributed to three categories:
+The zero-shot baseline achieves only 23.33% schema validity (7/30 examples pass). The 23 failures are primarily attributed to structural inconsistencies rather than fundamental comprehension errors:
 
-1. **Invented event types (e.g., LaborDispute):** The base model draws from its general vocabulary rather than the schema's defined enumeration, producing event type values not present in the `oneOf` discriminator.
-2. **Timestamp format inconsistency:** The baseline produces at least three distinct timestamp formats across its 30 outputs — ISO 8601 with time (`"2023-04-15T17:00:00Z"`), plain date (`"2023-09-15"`), and natural language (`"March 1, 2022"`). None of the non-ISO formats satisfy the schema's string field constraint as parsed by the evaluation harness.
+1. **Missing Required Fields:** The baseline frequently omits required nested arguments within the schema (e.g., leaving out `operator` in a `FacilityHalt` event).
+2. **Malformed JSON:** Occasional failure to properly escape strings or close nested objects leads to parsing failures.
 3. **Schema field vocabulary mismatch:** The baseline occasionally generates field names that are correct for the *concept* but not for the *schema vocabulary* (e.g., fields named `"reason"` under a TariffChange schema that expects `"tariff_action"`).
 
-The pipeline eliminates all three categories via constrained decoding. The Outlines finite-state machine makes it physically impossible to emit a token sequence that would produce an invalid event_type, a non-string timestamp, or an unrecognized field name. This structural enforcement is the most measurable contribution of the constrained decoding component.
+Remarkably, the baseline completely avoided certain anticipated failures: it exclusively predicted valid event types from the `enum` and correctly formatted every single timestamp in strict ISO 8601 format (`YYYY-MM-DDTHH:MM:SSZ`), proving robust prior knowledge of the domain structure.
+
+The pipeline eliminates structural failures via constrained decoding. The Outlines finite-state machine makes it physically impossible to emit a token sequence that would produce malformed JSON or miss required keys.
 
 ### 6.6 Performance and Runtime
 
@@ -551,9 +553,9 @@ Any behavioral rule specified in the system prompt must be exactly mirrored in t
 
 The deliberate 60.6% positive training rate in the DistilBERT classifier was not a decision made by accident or poor dataset construction — it was a principled engineering choice. In a production monitoring system, a false negative at the triage stage is irreversible: the document is silently discarded and the disruption event is never surfaced. While a false positive forwards a non-event to Qwen (which may struggle since its training set lacks NoEvent examples), this is still preferable to missing an actual event. Given this asymmetric cost structure, training the classifier with a positive-biased dataset effectively implements a soft lower threshold for the classification boundary, resulting in higher recall at a modest precision cost. This deliberate precision-recall trade-off is the correct engineering decision for any early-warning monitoring system where missing an event costs more than processing a false positive.
 
-### Lesson 3: Few-Shot Prompt Examples Are Also Default Anchor Values
+### Lesson 3: Robust Null-Handling is Learnable via Small-Scale LoRA
 
-The `2023-11-05T00:00:00Z` timestamp appearing in 7 out of 10 null-timestamp test predictions is the exact date used in the system prompt's FacilityHalt example. The model, when unable to extract a valid timestamp from the source text, falls back to the example timestamp rather than returning `null`. This hallucination pattern is invisible at format evaluation time (the hallucinated timestamp is structurally valid) but is detectable at semantic evaluation time (it does not match the gold null). The lesson is that few-shot examples in a system prompt are not merely illustrative — they are high-weight reference points in the model's conditional distribution. Including a null-timestamp example explicitly in the system prompt is necessary to demonstrate the expected behavior when date information is absent.
+The pipeline's perfect performance on null-timestamp cases (correctly outputting `null` in 10 out of 10 instances) highlights that small models can robustly learn absence-detection. Generative models natively tend to hallucinate plausible dates when prompted to extract them. Fine-tuning the Qwen model successfully overrode this generative prior, teaching the model to output `null` rather than aggressively guessing or anchoring to few-shot example values.
 
 ### Lesson 4: The Hallucination Filter Must Be Asymmetric by Field Type
 
@@ -563,15 +565,15 @@ A uniform word-presence hallucination filter applied to all extracted fields wou
 
 Without constrained decoding, schema errors are immediately detectable (malformed JSON, missing required fields, invalid enum values). With constrained decoding, schema errors become impossible — but semantic errors (hallucinated entity values, wrong event type classification) become the primary failure mode. This shifts the evaluation burden from structural validation (easy to automate) to semantic evaluation (requires gold annotations). Pipeline builders who rely on schema validity as a proxy for extraction quality will be systematically overconfident after implementing constrained decoding. F1 evaluation against gold annotations remains essential.
 
-### Lesson 6: Raw Corpus Class Imbalance Leaves Persistent Bias Despite Balanced Training
+### Lesson 6: Extreme Class Collapse Can Occur Despite Balanced Training
 
-Despite training the Qwen extractor on a near-perfectly balanced dataset (24/23/24/23/21 per class), the model's FacilityHalt over-prediction bias persists in test evaluation (+4 over-predicted vs. gold). This residual bias is not a training artifact — it is a **semantic structure** artifact. FacilityHalt, SupplierInsolvency, and ForceMajeure all describe scenarios in which operations are physically halted. At the surface text level, these events share large amounts of vocabulary ("shutdown," "halt," "suspended operations," "facility," "disruption"). The model's classification boundary for these three classes is determined by subtle linguistic signals — legal terminology for SupplierInsolvency, contractual language for ForceMajeure, operational language for FacilityHalt — and the FacilityHalt class's semantic breadth makes it the default prediction when those signals are ambiguous or absent. Targeted data augmentation with adversarial boundary examples is required to harden these class boundaries.
+Despite training the Qwen extractor on a near-perfectly balanced dataset (24/23/24/23/21 per class), the model experienced a complete class collapse on `ShipmentDelay` in the test set (0 predicted vs. 6 gold), misclassifying them entirely as `FacilityHalt` (12 predicted vs. 6 gold). This failure is not a training artifact — it is a **semantic structure** artifact. `FacilityHalt` and `ShipmentDelay` both describe scenarios in which logistics operations are interrupted. At the surface text level, they share overlapping vocabulary ("port," "terminal," "delay," "disruption"). The `FacilityHalt` class's semantic breadth makes it a powerful attractor state when those signals are ambiguous. Targeted data augmentation with adversarial boundary examples is required to harden these specific class boundaries.
 
 ---
 
 ## 9. Future Work
 
-**Timestamp null-handling correction.** Adding explicit null-timestamp examples to the system prompt is the single highest-impact intervention available for the current pipeline. The 7/10 prompt-contamination failure rate on null-timestamp test cases represents a systematic, fixable error that requires no architectural changes — only a one-line prompt addition.
+**ShipmentDelay boundary hardening.** The total class collapse of `ShipmentDelay` into `FacilityHalt` requires targeted adversarial augmentation. Specifically, identically framed logistics scenarios resulting in shipment delays versus physical halts should be added to the training set to separate these class boundaries in embedding space.
 
 **Multi-event document handling.** The current pipeline processes 150-word chunks independently and can detect multiple events per document. However, it has no mechanism for identifying that two chunks describe different temporal stages of the same underlying event (e.g., a strike beginning in chunk 1 and a resolution in chunk 2). Event de-duplication and temporal event linking are necessary extensions for operational deployment.
 

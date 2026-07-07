@@ -365,21 +365,21 @@ At a 20% document positive rate (realistic for a filtered news feed), only 20% o
 
 ### 7.4 Failure Analysis
 
-**Misclassification: FacilityHalt Over-Prediction**
+**Misclassification: Extreme Class Collapse (ShipmentDelay to FacilityHalt)**
 
 | Event Type | Gold (test) | Predicted | Delta |
 |---|---|---|---|
-| FacilityHalt | 6 | **10** | **+4 over-predicted** |
+| FacilityHalt | 6 | **12** | **+6 over-predicted** |
+| SupplierInsolvency | 6 | 6 | 0 |
+| ForceMajeure | 6 | 6 | 0 |
 | TariffChange | 6 | 6 | 0 |
-| ForceMajeure | 6 | 5 | -1 |
-| ShipmentDelay | 6 | 5 | -1 |
-| SupplierInsolvency | 6 | **4** | **-2 under-predicted** |
+| ShipmentDelay | 6 | **0** | **-6 under-predicted** |
 
-The pipeline over-predicts FacilityHalt despite training on a balanced dataset. This residual bias is a semantic structure artifact, not a training data artifact. FacilityHalt, SupplierInsolvency, and ForceMajeure all describe scenarios where operations physically halt, sharing vocabulary like "shutdown," "suspended operations," and "facility." The classifier anchors on these surface signals and defaults to FacilityHalt when the legally specific or contractually specific language that would distinguish the other two is absent or subtle.
+The pipeline completely collapses on the `ShipmentDelay` class in the test set, misclassifying all of them as `FacilityHalt`. This residual bias is a semantic structure artifact, not a training data artifact. Both `FacilityHalt` and `ShipmentDelay` describe scenarios where logistics operations are interrupted, sharing overlapping vocabulary like "port," "terminal," and "delay." The classifier anchors on these surface signals and defaults to `FacilityHalt` as a powerful attractor state when the specific language distinguishing a downstream shipping delay is subtle.
 
-**Timestamp Hallucination (Systematic)**
+**Perfect Null-Handling for Timestamps**
 
-In 10 out of 30 test examples, the gold annotation has `source_timestamp: null`. Our pipeline correctly returns `null` in 0 of these 10 cases, hallucinating a timestamp in every one of them. More strikingly, 7 of the 10 hallucinated timestamps are identical: `"2023-11-05T00:00:00Z"`, which is the date used in the system prompt's FacilityHalt example. When the model cannot extract a timestamp, it falls back to the example date rather than returning `null`. This is textbook few-shot example contamination: the few-shot example is providing a default anchor value. Adding a null-timestamp example to the system prompt is the single highest-impact fix available with no architectural changes required.
+In 10 out of 30 test examples, the gold annotation has `source_timestamp: null`. A common failure mode in generative extraction is model hallucination—where the model invents a plausible date or anchors to a few-shot example. Strikingly, the Qwen LoRA pipeline correctly returned `null` for all 10 of these cases (100% accuracy on null timestamps). This demonstrates that the model successfully learned the `null` assignment behavior during fine-tuning and can robustly identify the absence of information.
 
 **Missing Arguments**
 
@@ -387,13 +387,15 @@ For SupplierInsolvency events where the source text omits explicit filing jurisd
 
 **Baseline Schema Failures**
 
-The zero-shot baseline achieves only 23.33% schema validity (7/30 pass). Three failure categories explain this:
+The zero-shot baseline achieves only 23.33% schema validity (7/30 pass). The 23 failures are primarily attributed to structural inconsistencies rather than fundamental comprehension errors:
 
-1. Invented event types such as `LaborDispute` that are absent from the schema's `oneOf` discriminator.
-2. Timestamp format inconsistency: at least three distinct formats appear across 30 outputs (ISO 8601 with time, plain date, and natural language).
+1. Missing required nested arguments within the schema (e.g., omitting `operator` in a `FacilityHalt` event).
+2. Malformed JSON caused by failing to escape strings or properly close nested objects.
 3. Field name vocabulary mismatch: field names that are conceptually correct but lexically wrong for the schema (e.g., `"reason"` under TariffChange, which expects `"tariff_action"`).
 
-Constrained decoding eliminates all three categories by making it physically impossible to emit token sequences that produce invalid event types, non-string timestamps, or unrecognized field names.
+Remarkably, the baseline exclusively predicted valid event types from the `enum` and correctly formatted every single timestamp in strict ISO 8601 format (`YYYY-MM-DDTHH:MM:SSZ`), proving robust prior knowledge.
+
+Constrained decoding eliminates structural failures by making it physically impossible to emit token sequences that produce malformed JSON or miss required keys.
 
 ### 7.5 Perplexity Analysis
 
@@ -468,21 +470,19 @@ We evaluated the fine-tuned model on three general-purpose tasks: logical reason
 
 **Lesson 2: Recall-biased triage is the correct production engineering decision.** The 60.6% positive training rate in DistilBERT was intentional. In a monitoring system, a false negative is irreversible while a false positive is recoverable. Training with a positive-biased distribution implements a soft lower threshold on the classification boundary, which is the right trade-off for any early-warning monitoring system.
 
-**Lesson 3: Few-shot prompt examples are also default anchor values.** Seven of our ten null-timestamp hallucinations produce the exact date from the system prompt's example. When the model cannot find a timestamp, it falls back to the example. Adding a null-timestamp example to the prompt fixes this with no model-level intervention.
+**Lesson 3: Robust null-handling is learnable via small-scale LoRA.** The pipeline's perfect performance on null-timestamp cases (correctly outputting `null` 10/10 times) highlights that small models can robustly learn absence-detection. Fine-tuning the Qwen model successfully overrode the generative prior to hallucinate or guess dates when none are present.
 
 **Lesson 4: The hallucination filter must treat free-text and enum fields differently.** A uniform word-presence check would silently null out correct enum values. `disruption_type: Cyberattack` is correct for a text describing "a sophisticated ransomware attack," even without the literal word appearing. Applying the filter to enum fields would systematically nullify correct semantic mappings.
 
 **Lesson 5: Constrained decoding converts schema errors into semantic errors.** Without it, schema violations are immediately detectable. With it, they become impossible, but semantic errors become the primary failure mode. Builders who use schema validity as a proxy for extraction quality will be overconfident after implementing constrained decoding. F1 against gold annotations remains essential.
 
-**Lesson 6: Raw corpus imbalance leaves semantic traces that balanced training cannot fully erase.** Despite training Qwen on a near-uniform class distribution, FacilityHalt over-prediction persists at test time. The residual bias is driven by semantic similarity: FacilityHalt, SupplierInsolvency, and ForceMajeure all describe physical operational halts and share vocabulary. Targeted adversarial boundary examples are required to harden the class boundaries, not just balanced sampling.
+**Lesson 6: Extreme class collapse can occur despite balanced training.** Despite training Qwen on a near-uniform class distribution, the model experienced a complete class collapse on `ShipmentDelay` at test time. The failure is driven by semantic similarity: `FacilityHalt` and `ShipmentDelay` both describe logistics disruptions and share vocabulary. Targeted adversarial boundary examples are required to harden the class boundaries, not just balanced sampling.
 
 ---
 
 ## 10. Future Work
 
-**Timestamp null-handling.** Adding an explicit null-timestamp example to the system prompt is the single highest-impact near-term fix. The 7/10 prompt-contamination failure rate on null-timestamp cases is systematic and requires no architectural change.
-
-**FacilityHalt boundary hardening.** The three-way semantic boundary between FacilityHalt, SupplierInsolvency, and ForceMajeure needs targeted adversarial augmentation: physically identical scenarios described with different framing vocabulary added to the training set.
+**ShipmentDelay boundary hardening.** The total class collapse of `ShipmentDelay` into `FacilityHalt` requires targeted adversarial augmentation. Identically framed logistics scenarios resulting in shipment delays versus physical halts should be added to the training set.
 
 **Multi-event document handling.** The pipeline currently processes 150-word chunks independently with no mechanism for recognizing that two chunks describe different temporal stages of the same event. Event de-duplication and temporal event linking are necessary for operational deployment.
 
