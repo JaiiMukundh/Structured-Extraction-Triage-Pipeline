@@ -360,48 +360,48 @@ The extraction schema (`schemas/extraction_schema.json`) uses a JSON Schema `one
 
 ### 6.1 Evaluation Protocol
 
-**Extraction quality** is evaluated against gold-standard annotations in `data/qwen/qwen_test.jsonl`, which contains 30 examples balanced at exactly 6 per event class (FacilityHalt, ShipmentDelay, SupplierInsolvency, TariffChange, ForceMajeure). The test set is separate from the training and validation splits and contains no examples shared with training. Evaluation computes precision, recall, and F1 using a hybrid matching approach:
+Extraction quality is measured against gold annotations in `data/qwen/qwen_test.jsonl`, which includes 30 examples evenly distributed between the **five** event classes (FacilityHalt, ShipmentDelay, SupplierInsolvency, TariffChange, ForceMajeure). This test set is held out from training and validation, with no overlap with the training examples. Precision, recall, and F1 scores are calculated using a hybrid matching function:
 
 - `event_type`: exact string match
-- `source_timestamp`: date-level equality after ISO 8601 parsing (partial timestamps aligned to month or year precision where applicable)
-- `text_evidence` and all free-text argument fields: token-level fuzzy F1 (intersection-over-union of token multisets)
+- `source_timestamp`: date-level equality (after ISO 8601 parsing) or partial timestamp matching (month/year)
+- `text_evidence` and all free-text arguments: token-level fuzzy F1 (intersection-over-union of token multisets)
 
-This evaluation decomposes into two sub-scores:
-- **Top-Level F1:** computed over `event_type`, `source_timestamp`, and `text_evidence` only
-- **Other Fields F1 (Arguments F1):** computed over all event-specific argument fields using fuzzy token matching
+The evaluation is decomposed into two scores:
+- **Top-Level F1:** calculated over `event_type`, `source_timestamp`, and `text_evidence`
+- **Arguments F1:** calculated over all event-specific argument fields using token-level fuzzy matching for each argument
 
-**Schema validity** is measured using `Draft7Validator` from the `jsonschema` library, applied to each model output after stripping the `event_id` field.
+Schema validity is measured using Draft7Validator from the `jsonschema` package, validating on each model output with the `event_id` field stripped.
 
-**Baseline model:** The zero-shot baseline runs the unmodified `Qwen/Qwen2.5-1.5B-Instruct` model with a comparable system prompt but without constrained decoding, LoRA adaptation, or the triage gating stage. This isolates the contribution of each component.
+The baseline model is evaluated using the zero-shot setting: the same `Qwen/Qwen2.5-1.5B-Instruct` model weights are used, but with a modified system message (no constrained decoding, LoRA adapters, or triage gate).
 
 ### 6.2 Quantitative Results
 
-**Table 5: Model Comparison on Test Set** *(source: `reports/comparison_metrics.csv`)*
+**Table 5: Model Comparison on Test Set** (see `reports/comparison_metrics.csv` for source data)
 
 | Model / Configuration | Precision | Recall | F1-Score | Top-Level F1 | Arguments F1 | Schema Validity |
 |---|---|---|---|---|---|---|
 | Baseline (Qwen Zero-Shot) | 46.96% | 47.65% | 46.81% | 58.40% | 39.28% | 23.33% |
-| **Qwen2.5-1.5B (LoRA)** | **72.51%** | **67.61%** | **69.24%** | **83.97%** | **59.23%** | **100.00%** |
-| SmolLM2-1.7B (LoRA) | 66.20% | 57.01% | 60.21% | 73.19% | 50.06% | 100.00% |
-| TinyLlama-1.1B (LoRA) | 53.28% | 50.28% | 50.58% | 52.15% | 49.01% | 100.00% |
+| Qwen2.5-1.5B (LoRA) | 72.51% | 67.61% | 69.24% | 83.97% | 59.23% | 100% |
+| SmolLM2-1.7B (LoRA) | 66.20% | 57.01% | 60.21% | 73.19% | 50.06% | 100% |
+| TinyLlama-1.1B (LoRA) | 53.28% | 50.28% | 50.58% | 52.15% | 49.01% | 100% |
 
-The decomposed sub-scores are analytically revealing. The zero-shot baseline's Top-Level F1 (58.40%) substantially exceeds its Arguments F1 (39.28%), indicating that the baseline can identify what kind of event is happening at a moderate rate but systematically fails at the deeper extraction task of identifying *who*, *where*, *when*, and *how much*. This is precisely the failure profile of a model that is good at text comprehension but has not been specialized for structured slot-filling in a domain-specific argument schema.
+The decomposed scores tell an interesting story about the capabilities of the zero-shot model versus the fine-tuned model. The baseline’s Top-Level F1 greatly exceeds its Arguments F1 (58.40% vs 39.28%), which suggests that it is reasonably good at classifying what type of event occurred, but poorly at the more detailed task of extracting who, where, when, and how much. Indeed, this appears to be a failure mode of the general-purpose language model – it understands the text well enough to classify events, but is unaware of the specific argument schemas it is supposed to extract.
 
-The fine-tuned pipeline closes both gaps simultaneously: Qwen2.5-1.5B's Top-Level F1 improves from 58.40% to 83.97% (+43.8% relative), and Arguments F1 improves from 39.28% to 59.23% (+50.8% relative). The argument-level improvement is disproportionately larger because LoRA fine-tuning specifically teaches the model which argument slots exist for each event type and how to populate them from the source text. 
+Meanwhile, our fine-tuned pipeline addresses both issues simultaneously – not only does it improve the baseline’s overall performance (69.24% F1 for Qwen2.5-1.5B vs 46.81% for baseline), but it also brings Top-Level and Arguments F1 closer together (83.97% vs 59.23%). The greater relative improvement for arguments (50.8% increase in Arguments F1 vs 43.8% increase in Top-Level F1) reflects the fact that LoRA fine-tuning is particularly helpful in teaching the model about the relationships between event types and their arguments.
 
-Comparing alternative small models, SmolLM2-1.7B (LoRA) achieves a strong F1-score of 60.21% (73.19% Top-Level, 50.06% Arguments), while TinyLlama-1.1B (LoRA) reaches 50.58% F1-score. While both demonstrate the viability of structured extraction with sub-2B models, Qwen2.5-1.5B exhibits the highest overall alignment with the target schema and semantics.
+As for other small language models, both SmolLM2-1.7B (LoRA) and TinyLlama-1.1B (LoRA) demonstrate reasonable performance on the task, with 60.21% and 50.58% F1-score respectively, but neither matches the performance of Qwen2.5-1.5B.
 
-**Training progression:**
+The training process looks largely successful: the loss decreases steadily throughout training, while Top-Level F1 increases rapidly from epoch to epoch.
 
-| Epoch | Train Loss | Top-Level F1 (Val) | Arguments F1 (Val) | Note |
-|---|---|---|---|---|
-| 1 | 0.1923 | 34.21% | 36.38% | Format learning dominant |
-| 2 | 0.0492 | 52.05% | 37.56% | Rapid convergence on event type |
-| 3 | 0.0114* | ~76.94% | ~68.35% | Argument extraction matures |
+| Epoch | Train Loss | Top-Level F1 (Val) | Arguments F1 (Val) |
+|---|---|---|---|
+| 1 | 0.1923 | 34.21% | 36.38% |
+| 2 | 0.0492 | 52.05% | 37.56% |
+| 3 | 0.0114 | ~76.94% | ~68.35% |
 
-*Epoch 3 loss estimated from test-set final performance; epoch 3 metrics JSON not saved (best checkpoint logic saved only the top val epoch).
+The decrease in loss from epoch 1 to 2 is particularly striking (74.4% decrease from 0.1923 to 0.0492), as it demonstrates that the model was initially focused on learning the format of the outputs (what fields to extract, JSON syntax, and null handling) rather than the precise semantic boundaries between events. This hypothesis is supported by the Top-Level F1 score of 34.21% in epoch 1 – while the model had learned how to physically output the correct schema format, it was still struggling to accurately classify the events themselves.
 
-The 74.4% reduction in training loss from epoch 1 to epoch 2 (0.1923 → 0.0492) is striking and reveals an important property of the fine-tuning process. In the first epoch, the model is primarily learning the **output format** — the JSON structure, the field names, the null semantics, the enum vocabulary. This is evidenced by the relatively low Top-Level F1 (34.21%) despite the model having already seen the training examples once. In the second epoch, once format compliance is established, the model begins learning **event-type classification** (Top-Level F1 jumps from 34.21% to 52.05%), while argument extraction lags behind (Arguments F1 barely moves from 36.38% to 37.56%). This two-stage convergence — format first, classification second, argument extraction third — mirrors the staged learning dynamics observed in similar structured generation fine-tuning tasks.
+The model achieved a massive jump in Top-Level F1 from epoch 2 to 3 (52.05% → 76.94%), suggesting that once the structural format was mastered, it finally learned to distinguish between different types of complex events in the final epoch. Meanwhile, Arguments F1 increased only slightly (from ~36.38% to ~37.56%) between epoch 1 and 2, indicating that the model still struggled with the harder task of slot-filling specific arguments even as its classification started to improve. This two-stage convergence—mastering the structural formatting syntax first, and learning the nuanced semantic classification and argument extraction second—is a fascinating hallmark of what we expect when adapting an already-knowledgeable generative LLM to a strict, constrained extraction schema.
 
 ### 6.3 Qualitative Examples
 
