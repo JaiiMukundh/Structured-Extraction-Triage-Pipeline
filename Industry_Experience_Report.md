@@ -573,6 +573,10 @@ Without constrained decoding, schema errors are immediately detectable (malforme
 
 Despite training the Qwen extractor on a near-perfectly balanced dataset (24/23/24/23/21 per class), the model experienced a complete class collapse on `ShipmentDelay` in the test set (0 predicted vs. 6 gold), misclassifying them entirely as `FacilityHalt` (12 predicted vs. 6 gold). This failure is not a training artifact — it is a **semantic structure** artifact. `FacilityHalt` and `ShipmentDelay` both describe scenarios in which logistics operations are interrupted. At the surface text level, they share overlapping vocabulary ("port," "terminal," "delay," "disruption"). The `FacilityHalt` class's semantic breadth makes it a powerful attractor state when those signals are ambiguous. Targeted data augmentation with adversarial boundary examples is required to harden these specific class boundaries.
 
+### Lesson 7: Cascading False Positives and the "NoEvent" Hallucination Vulnerability
+
+Because the DistilBERT triage classifier was intentionally trained with a high-recall bias (60.6% positive rate), it guarantees that some non-event text chunks (false positives) will be passed to the Qwen extractor. While a `NoEvent` sentinel is defined in the JSON schema to handle these cases, Qwen was trained *exclusively* on positive event records. Starved of negative training examples, Qwen's generative prior is unequipped to map irrelevant text to the `NoEvent` schema. When DistilBERT passes a false positive, Qwen cascades the error by shoehorning the text into an inappropriate event class (e.g., hallucinating a `FacilityHalt`). While the current two-stage architecture successfully reduces overall LLM inference costs by filtering out the vast majority of negatives at stage 1, hardening the pipeline requires injecting "hard negative" examples into Qwen's training set to explicitly teach it the `NoEvent` mapping.
+
 ---
 
 ## 9. Future Work

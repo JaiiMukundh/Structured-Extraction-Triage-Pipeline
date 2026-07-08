@@ -486,6 +486,8 @@ We evaluated the fine-tuned model on three general-purpose tasks: logical reason
 
 **Lesson 6: Extreme class collapse can occur despite balanced training.** Despite training Qwen on a near-uniform class distribution, the model experienced a complete class collapse on `ShipmentDelay` at test time. The failure is driven by semantic similarity: `FacilityHalt` and `ShipmentDelay` both describe logistics disruptions and share vocabulary. Targeted adversarial boundary examples are required to harden the class boundaries, not just balanced sampling.
 
+**Lesson 7: Cascading false positives and the "NoEvent" hallucination vulnerability.** Because the DistilBERT triage classifier was intentionally trained with a high-recall bias (60.6% positive rate), it guarantees that some non-event text chunks (false positives) will be passed to the Qwen extractor. While a `NoEvent` sentinel is defined in the JSON schema to handle these cases, Qwen was trained *exclusively* on positive event records. Starved of negative training examples, Qwen's generative prior is unequipped to map irrelevant text to the `NoEvent` schema. When DistilBERT passes a false positive, Qwen cascades the error by shoehorning the text into an inappropriate event class (e.g., hallucinating a `FacilityHalt`). While the current two-stage architecture successfully reduces overall LLM inference costs by filtering out the vast majority of negatives at stage 1, hardening the pipeline requires injecting "hard negative" examples into Qwen's training set to explicitly teach it the `NoEvent` mapping.
+
 ---
 
 ## 10. Future Work
