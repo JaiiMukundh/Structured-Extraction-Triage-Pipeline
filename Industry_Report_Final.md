@@ -295,7 +295,7 @@ The extraction schema (`schemas/extraction_schema.json`) uses a JSON Schema `one
 | Max sequence length | 1,024 tokens (Qwen), 512 tokens (DistilBERT) |
 | DistilBERT dropout | 0.2 (vs. default 0.1) |
 | Random seed | 42 |
-| Adapter file size | 70.5 MB |
+| Adapter file size | 73.9 MB |
 
 ---
 
@@ -367,7 +367,7 @@ Comparing alternative small models, SmolLM2-1.7B achieves a competitive 60.21% F
 | Model load time | ~0.07 s | ~2.43 s |
 | Adapter load time | N/A | ~0.72 s |
 | Peak RAM (CPU inference) | ~196 MB | ~1.44 GB |
-| Adapter file size | N/A | 70.5 MB |
+| Adapter file size | N/A | 73.9 MB |
 
 At a 20% document positive rate (realistic for a filtered news feed), only 20% of documents reach the Qwen stage. DistilBERT handles the rest at 15ms each, achieving an estimated 92-99% cost reduction relative to frontier LLM APIs.
 

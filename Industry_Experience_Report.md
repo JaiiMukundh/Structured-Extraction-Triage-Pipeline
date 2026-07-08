@@ -352,7 +352,7 @@ The extraction schema (`schemas/extraction_schema.json`) uses a JSON Schema `one
 | Random seed | 42 | both training scripts |
 | Max new tokens (inference) | 512 | `triage_pipeline.py` |
 | Decoding strategy | Greedy (do_sample=False) | `triage_pipeline.py` |
-| Adapter file size | 70.5 MB (adapter_model.safetensors) | filesystem |
+| Adapter file size | 73.9 MB (adapter_model.safetensors) | filesystem |
 
 ---
 
@@ -477,7 +477,7 @@ The pipeline eliminates structural failures via constrained decoding. The Outlin
 | Model load time | ~0.07 s | ~2.43 s |
 | Adapter load time | N/A | ~0.72 s |
 | Peak RAM (CPU inference) | ~196 MB | ~1.44 GB (model + adapter) |
-| Adapter file size | N/A | 70.5 MB |
+| Adapter file size | N/A | 73.9 MB |
 
 The LoRA adapter is merged into the base model weights at deployment time (via a merge script), eliminating the adapter loading overhead at inference time. The merged model occupies the same VRAM as the base model.
 
@@ -539,7 +539,7 @@ We analyzed the average Frobenius norm across all projection modules for each of
 
 This layer-wise gradient reveals that the early visual/syntactic token extraction layers are preserved, while the deep semantic integration layers undergo substantial adjustment to output structured JSON event arguments. This distribution is plotted as a heatmap in `reports/lora_heatmaps.png`.
 
-The training loss curve (0.1923 → 0.0492 → ~0.0114 across 3 epochs) further corroborates this successful structural integration. The adapter file size of 70.5 MB represents a 96% compression of the fine-tuning information relative to storing the full model delta.
+The training loss curve (0.1923 → 0.0492 → ~0.0114 across 3 epochs) further corroborates this successful structural integration. The adapter file size of 73.9 MB represents a ~95.2% compression of the fine-tuning information relative to storing the full model delta.
 
 ### 7.3 Catastrophic Forgetting Assessment
 
