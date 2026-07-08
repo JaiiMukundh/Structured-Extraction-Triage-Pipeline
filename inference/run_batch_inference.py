@@ -150,9 +150,9 @@ def run_pipeline(test_rows):
         for idx, row in enumerate(tqdm(test_rows, desc="Pipeline inference")):
             text = row["text"]
             
-            # Chunking (150 words per chunk to prevent multi-event confusion)
+            # Chunking (260 words per chunk to prevent multi-event confusion)
             words = text.split()
-            chunks = [" ".join(words[i:i + 150]) for i in range(0, len(words), 150)]
+            chunks = [" ".join(words[i:i + 260]) for i in range(0, len(words), 260)]
             
             if not chunks:
                 out_file.write("null\n")

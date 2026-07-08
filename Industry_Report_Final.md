@@ -159,6 +159,10 @@ Both event types can co-occur. When a flood causes a factory to halt production 
 
 A cyberattack can produce either a FacilityHalt (if the attack halts production) or a ShipmentDelay (if it disrupts logistics without halting the facility). A ransomware attack on a maritime logistics operator produces a ShipmentDelay in our gold annotation (a 6-day delay for Ocean Network Express containers), but our pipeline predicts FacilityHalt, focusing on the port's operational shutdown. Both framings are semantically defensible, and the disagreement reflects a genuine ontological ambiguity at the event type boundary.
 
+**Corner Case 3: Extreme Semantic Similarity (The Triad of Ambiguity)**
+
+Beyond pairwise confusion, the dataset reveals an extreme semantic similarity between `FacilityHalt`, `ForceMajeure`, and `ShipmentDelay`. A single physical event—such as a major port closure due to a hurricane—can simultaneously halt a facility, delay multiple shipments, and trigger force majeure clauses across various contracts. Because our schema forces a single primary `event_type` classification per record, the model must learn subtle linguistic cues to disambiguate the focus of the text. If the narrative concentrates on the physical closure of the docks, it is a `FacilityHalt`; if it focuses on the stranded cargo vessels, it is a `ShipmentDelay`; if it highlights the legal liability exemptions claimed by the operators, it is `ForceMajeure`. This extreme overlap frequently causes class confusion during evaluation, despite the model accurately extracting the underlying facts.
+
 ---
 
 ## 4. Engineering Decisions
@@ -251,7 +255,11 @@ Input Text (arbitrary length)
 
 ### 5.2 Text Chunking Strategy
 
-We split input text on whitespace into 150-word windows. This word-count approach avoids loading the Qwen tokenizer at the chunking stage and keeps the chunking step independently testable. At typical tokenizer expansion ratios of 1.3 to 1.5 tokens per word, 150 words corresponds to approximately 195-225 tokens, comfortably within DistilBERT's 512-token limit. In our test set, documents average 268 words (range: 212-302), producing 2 chunks per document in most cases.
+We split input text on whitespace into 260-word windows (`chunks = [" ".join(words[i:i+260]) for i in range(0, len(words), 260)]`). This word-count approach avoids loading the Qwen tokenizer at the chunking stage and keeps the chunking step independently testable. At typical tokenizer expansion ratios of 1.3 to 1.5 tokens per word, 260 words corresponds to approximately 340-390 tokens, comfortably within DistilBERT's 512-token limit. In our test set, documents average 268 words (range: 212-302), producing 1 or 2 chunks per document.
+
+The primary engineering motivation for this non-overlapping chunking logic was to bypass Qwen's prompt limitations. Because the prompt instructs the model to *"Extract a single event matching the provided JSON schema,"* passing a full multi-event document would result in missed extractions or hallucinated merges. This rigid 260-word split forces the model to process different sections sequentially, outputting an array of extractions for every 260 words.
+
+However, because this is a hard split with no overlap, it introduces a risk of boundary truncation for extremely long documents. If an event description straddles the 260-word boundary, it is chopped in half, depriving both DistilBERT and Qwen of the full context. Addressing this flaw with a semantic sliding window is a priority for future work.
 
 ### 5.3 Event Schema
 
@@ -484,7 +492,9 @@ We evaluated the fine-tuned model on three general-purpose tasks: logical reason
 
 **ShipmentDelay boundary hardening.** The total class collapse of `ShipmentDelay` into `FacilityHalt` requires targeted adversarial augmentation. Identically framed logistics scenarios resulting in shipment delays versus physical halts should be added to the training set.
 
-**Multi-event document handling.** The pipeline currently processes 150-word chunks independently with no mechanism for recognizing that two chunks describe different temporal stages of the same event. Event de-duplication and temporal event linking are necessary for operational deployment.
+**Sliding window text chunking.** The pipeline currently relies on a non-overlapping 260-word chunking split. While this large window ensures most test documents fit into a single chunk, it still introduces a risk of boundary truncation for longer documents. If an event is described across the split, it is chopped in half. Implementing a tokenizer-aware semantic sliding window chunker with overlapping strides is essential for production robustness.
+
+**Multi-event document handling.** By outputting an array of extractions for every 260 words, the pipeline can detect multiple events per document. However, it has no mechanism for recognizing that two chunks describe different temporal stages of the same event. Event de-duplication and temporal event linking are necessary for operational deployment.
 
 **Threshold calibration.** Explicit Platt scaling or isotonic regression calibration on a held-out validation set would allow the precision-recall trade-off to be adjusted continuously as the production document distribution shifts over time.
 

@@ -124,9 +124,9 @@ text = " ".join(args)
 tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 
-# 1. Text Chunking (150 words per chunk to prevent multi-event confusion)
+# 1. Text Chunking (260 words per chunk to prevent multi-event confusion)
 words = text.split()
-chunks = [" ".join(words[i:i + 150]) for i in range(0, len(words), 150)]
+chunks = [" ".join(words[i:i + 260]) for i in range(0, len(words), 260)]
 
 # If no text chunks were parsed, exit
 if not chunks:
