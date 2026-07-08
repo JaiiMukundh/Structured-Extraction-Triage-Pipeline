@@ -583,6 +583,8 @@ Despite training the Qwen extractor on a near-perfectly balanced dataset (24/23/
 
 **Threshold calibration for the DistilBERT classifier.** The current architecture relies on label-distribution-induced threshold calibration (60.6% positive training rate). Explicit Platt scaling or isotonic regression calibration on a held-out validation set would allow the precision-recall trade-off to be continuously adjusted as the production document distribution shifts over time.
 
+**Force Majeure event classification nuances.** Future iterations must address the semantic nuance surrounding `ForceMajeure`. It is often incorrectly assumed to be limited solely to natural disasters or "acts of God". In reality, force majeure is a complex contractual and legal declaration that can be invoked across various disruption types. For instance, a `FacilityHalt` due to a severe labor strike or a `ShipmentDelay` resulting from sudden regulatory changes can both trigger force majeure clauses. Better disentangling the underlying physical event from the subsequent legal declaration will require expanding the annotation schema to support multi-label or hierarchical event representations.
+
 ---
 
 ## 10. Conclusion
