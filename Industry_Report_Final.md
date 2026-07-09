@@ -435,13 +435,13 @@ As can be seen, the LoRA adapted model only sees a minimal increase in perplexit
 
 6.8 Ablation Study
 
-We conducted ablation tests on the pipeline to isolate the performance contributions of its two major architectural additions: the DistilBERT triage gate and the two-pass hallucination self-correction loop.
+We conducted comprehensive ablation tests on the pipeline to isolate the performance contributions of its two major architectural additions: the DistilBERT triage gate and the two-pass hallucination self-correction loop. We specifically monitored how removing these components impacted end-to-end system latency and extraction fidelity.
 
 Removing the Triage Gate:
-When bypassing the 15ms DistilBERT classifier and running the 14s Qwen extraction pass on every document (a 100% positive rate assumption), pipeline latency increased by approximately 500% over a standard operational news feed (which typically contains ~20% genuine events). Removing the gate provides a marginal increase in absolute recall (recovering the <1% of events DistilBERT falsely filters) but at a catastrophic compute cost.
+The DistilBERT triage model acts as a highly efficient first-pass filter, requiring only 71 milliseconds to load into memory and operating at approximately 15 milliseconds per document inference. In contrast, the Qwen generative extraction pass demands significant compute, with empirical benchmarks showing a 14.32-second latency for the first pass and a 10.72-second penalty for the correction pass. When bypassing the DistilBERT classifier and forcing the Qwen extraction pass on every document (a 100% positive rate assumption), pipeline latency increased by approximately 500% over a standard operational news feed—which typically contains only ~20% genuine events. Ultimately, removing the gate provides a marginal increase in absolute recall (recovering the <1% of events DistilBERT falsely filters) but does so at a catastrophic and prohibitive compute cost.
 
 Removing the Self-Correction Loop:
-The two-pass hallucination correction loop acts as a deterministic factual grounding filter. When evaluated without the second pass, the pipeline's Arguments F1 score dropped notably as hallucinated entity spans (such as extracting union names instead of operators) were allowed to persist in the final output. The 10s latency penalty of the second pass is an essential trade-off for preserving data integrity in the free-text arguments.
+The two-pass hallucination correction loop acts as a deterministic factual grounding filter for the generative model. The implementation programmatically checks each extracted argument against the source text. When evaluated without this second pass, the pipeline's Arguments F1 score dropped notably as hallucinated entity spans—such as extracting union names instead of operators or fabricating temporal data—were allowed to persist in the final output. Although the second correction pass adds a 10.72-second latency penalty (bringing the total extraction time from 14.32 seconds to 25.05 seconds per document), we consider it an essential and necessary trade-off to preserve data integrity and prevent hallucinated facts from entering downstream business intelligence dashboards.
 
 7. LoRA Adapter Analysis
 
