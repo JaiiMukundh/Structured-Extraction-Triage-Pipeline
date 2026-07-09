@@ -2,6 +2,9 @@ Abstract :
 
 This paper presents an industry experience report on engineering a two-stage, triage and extraction pipeline, for supply chain risk/disruption event detection and structured json  schema extraction. It is a resource efficient pipeline which consists of a DistilBert binary classifier (66M parameters) to detect the relevance of the text to a supply chain related event and pass it to the event extraction model which performs Finite State Masking using outlines to output a structured schema. This structured schema is valuable to enterprise applications for creating functional APIs and efficient event detection. Our extraction model (Qwen2.5-1.5B-Instruct generative model with 1.54B parameters) was fine tuned using LoRA (only 18.46M trainable parameters via LoRA) and best practices to reduce memory overhead for the fine tuning task. The process undertaken to acquire the dataset, deliberate class splits and annotation guidelines are discussed in detail along with the reasoning behind them. The event taxonomy consists of 5 high impact and recurrent events in the supply chain domain which were chosen after analysing various sources in recent history. Priority was given to f1 score over raw accuracy as event extraction is more nuanced than plain text generation. The DistilBert classifier was asymmetrically fine tuned to guarantee 99% recall at the cost of precision (81%) as enterprises cannot afford to drop real events. The respectable precision also guarantees that completely unrelated events definitely get filtered out. Our pipeline was evaluated through a combination of fuzzy token level f1 for variable schema fields and strict evaluation of top-level schema fields. It produced a 43.7% improvement in the top level f1 score over a baseline, unconstrained Qwen2.5-1.5B-Instruct model's best performance (58.40% to 83.97%) and 47.97% net increase in the collated f1 score (46.80% to 69.25%). Our pipeline crushed the baseline model in schema validity with a 100% JSON schema validity over the baseline's 23.33%. In the process, there were a lot of challenges faced. These include Overprediction of a Facility Halt over Shipment Delay due to semantic similarity in the texts, model hallucinations due to context window exhaustion and spurious correlation to name a few. The pipeline was modified to handle hallucinations to a large degree using raw python text matching and reprompting if a hallucination by the model was detected. The base model size itself remains a large bottleneck to achieve enterprise standard 90% f1 scores.
 
+
+**Source Code:** The source code for this pipeline is maintained in the `formcept/whiteboard` repository to validate the internship at FORMCEPT.
+
 1. Introduction
 
 1.1 The Industry Problem :
@@ -126,10 +129,6 @@ Supply chain events that we initially considered but ultimately discarded includ
 
 All annotations follow certain conventions detailed below.
 
-Minimal Evidence Span:
-
-The text_evidence field should be as small as possible while still containing enough information to identify the event type and arguments. During the initial rounds of annotation, we noticed that some annotators tended to copy large portions of text, including entire sentences or paragraphs, resulting in very long spans of text. These long spans often contained irrelevant information that could confuse the model and lead to hallucinations. The minimal span was identified through multiple rounds of annotation as 15-25 words. Anything smaller than that rarely contained enough context to allow unambiguous identification of the event type, and anything larger contained too much irrelevant information, increasing the risk of hallucinations. Thus, 15-25 words is the maximal span that provides enough context without increasing the risk of hallucinations.
-
 ISO 8601 Timestamp:
 
 The timestamp follows the ISO 8601 standard (YYYY-MM-DDTHH:MM:SSZ) and only contains the information present in the original source document. If only the year is specified, it is represented as YYYY-MM-DDTHH:MM:SSZ, with all other fields set to 0. Similarly, a timestamp that only specifies the month is written as YYYY-MM-DDTHH:MM:SSZ. If no timestamp information could be retrieved from the source document, the timestamp is reported as null.
@@ -174,10 +173,6 @@ Example B Incorrect Annotation (evidence span too long)
 
 A text about the 2023 UAW strike contains the sentence “On September 15, 2023, the United Auto Workers (UAW) union, having failed to reach an agreement on new contract terms with the “Big Three” auto manufacturers, initiated a targeted strike resulting in an immediate facility halt by GM.”. An early annotation used the entire 38-word sentence as text_evidence. The correct annotation was using only the last 15 words beginning with “… GM was forced”. The sentence mentions UAW and Big Three that are unions/union groups that are not present in any of the required fields of any of the correct arguments, tempting the model to hallucinate incorrect entries.
 
-Extreme Semantic Similarity:
-
-Another interesting observation was that the data has extreme semantic similarity between facilities_halt, force_majeure, shipment_delay. One physical event can have multiple consequences like the closure of a transport route leading to shipment delays and the closure of a facility leading to force_majeure claims. Due to the nature of the task to choose one event_type as a label for the records, the model had to learn to differentiate between them by the presence of certain terms in the description. So, the closure of a facility is facilities_halt but the closure of a transport route is shipment_delay, and the claim of force_majeure is obviously the third one. This leads to frequent confusion between the three during testing, despite the model correctly extracting the underlying facts.
-
 
 Corner Case 1: FacilityHalt / ForceMajeure
 
@@ -186,6 +181,12 @@ The same text can include both ForceMajeure (an event of force majeure) and Faci
 Corner Case 2: The Cyberattack Corner Case
 
 A cyberattack can either lead to a facility halt or a shipment delay depending on the context. A ransomware attack on a maritime logistics company leads to a six-day shipment delay of Ocean Network Express containers in the gold annotation. However, our pipeline suggested FacilityHalt because the port was closed due to the attack. Both annotations can be seen as correct, depending on the perspective.
+
+3.7 Data Quality and Normalization Metrics
+
+A substantial amount of data engineering was required to transform the raw corpus into a model-ready state. The pipeline applies rigorous normalization, primarily centered around ISO-8601 formatting for timestamps. Instead of omitting missing timestamps (which would break downstream SQL queries like `WHERE source_timestamp IS NOT NULL`), we enforce an explicit `null` resolution for absent data.
+
+We faced significant data dropping during the initial parsing phase. Numerous raw records lacked essential fields or contained unparseable text structures due to scraping artifacts. These were dropped entirely from the pipeline to maintain strict schema integrity. The multi-stage dataset balancing pipeline ultimately distilled this noisy raw corpus down into a clean, near-uniform extraction training set.
 
 4. Engineering Decisions
 
@@ -237,6 +238,28 @@ Using a word presence check for semantically constrained fields would lead to a 
 
 This distinction must be encoded in any hallucination detection mechanism for a similarly structured task.
 
+4.7 Failed Pipeline Experiments
+
+We encountered several architectural and data-driven failures during pipeline development that required structural fixes.
+
+1. The Missing NoEvent Hallucination Vulnerability
+Because the DistilBERT triage classifier was intentionally trained with a high-recall bias (60.6% positive rate), it guarantees that some non-event text chunks (false positives) will be passed to the Qwen extractor. While a NoEvent sentinel is defined in the JSON schema, Qwen was trained exclusively on positive event records. Starved of negative training examples, Qwen's generative prior is unequipped to map irrelevant text to the NoEvent schema. When DistilBERT passes a false positive, Qwen cascades the error by hallucinating an inappropriate event class (e.g., a FacilityHalt). Hardening the pipeline requires injecting "hard negative" examples into Qwen's training set.
+
+2. Annotation Span Bloat
+Early annotation rounds used full sentences (~30+ words) for evidence spans, such as copying entire paragraphs detailing union names and corporate subsidiaries during a strike. This bloated context caused the generative model to aggressively hallucinate arguments by pulling in irrelevant entities. Forcing annotators to use minimal 15-25 word spans resolved this entity entanglement.
+
+3. Hard Chunking Boundary Failures
+The pipeline relies on a non-overlapping 260-word text chunking split. Because this is a hard split (range(0, len(words), 260)), it introduces severe boundary truncation for extremely long documents. If an event is described across the 260-word boundary (e.g., words 250 to 270), the context is chopped in half, leading to false negatives from DistilBERT and hallucinated incomplete extractions from Qwen.
+
+4. Extreme Class Collapse Under Ambiguity
+Despite training Qwen on a balanced dataset, the model experienced complete class collapse on ShipmentDelay in the test set, misclassifying all instances as FacilityHalt. Because the JSON schema forces a single choice, the model struggles when a complex event (e.g., a cyberattack or hurricane) simultaneously halts a facility and delays shipments. FacilityHalt acts as a powerful semantic attractor state, absorbing ambiguous logistics interruptions.
+
+5. FacilityHalt Over-Prediction Bias
+The raw corpus was skewed 30.7% toward FacilityHalt events due to the higher news frequency of factory fires and strikes. Initially, this caused early model iterations to systematically over-predict FacilityHalt, degrading precision for rarer events like ForceMajeure. The dataset had to be synthetically balanced to force uniform class distribution.
+
+6. Alternative Models and Zero-Shot Failures
+We experimented with zero-shot extraction using the base Qwen2.5-1.5B-Instruct model, which yielded a disastrous 23.33% schema validity rate and hallucinated non-existent enum types. We also evaluated alternative small models on the LoRA pipeline: TinyLlama-1.1B-Chat-v1.0 (F1 50.58%) and SmolLM2-1.7B-Instruct (F1 60.21%), both of which failed to match Qwen's 69.24% F1 extraction performance.
+
 5. System Architecture :
 
 5.1 End-to-End pipeline :
@@ -250,8 +273,6 @@ The input text is divided into segments of 260 words by default based on spaces 
 This chunking strategy was selected because it also helps to avoid the SLM’s prompt length restrictions. The system prompt for the Qwen instructs it to “Extract a single event matching the provided JSON schema.” If, for instance, a 500-word text describing several distinct supply chain events was given to the model, it would likely be truncated (with a max of 1024 tokens allocated), resulting in only one event being extracted, which would render this pipeline ineffective.
 
 As a result, the pipeline has to divide the text into smaller chunks and ask the model to extract events from each individually, appending each JSON extraction to a list of JSON objects as the final result.
-
-The issue with this approach is that it can result in chunking at inappropriate places for exceptionally lengthy events. For instance, if an event began on the 150th word and essential information such as Force Majeure/Insolvency clauses followed after the 260th word, it would result in incorrect classifications or even hallucinated insertions. This represents an engineering challenge that needs to be addressed in the future.
 
 5.3 Event Schema : 
 
@@ -411,6 +432,17 @@ Base Model (Qwen-1.5B)	6.54	26.62
 LoRA Adapted Model	6.60	29.63
 As can be seen, the LoRA adapted model only sees a minimal increase in perplexity on both corpora. On the general language modeling corpus, its performance is virtually identical to the base model’s (6.54 -> 6.60). Meanwhile, the increase in perplexity on the supply chain corpus from 26.62 to 29.63 suggests that adapting the model to the target domain did not cause catastrophic forgetting.
 
+
+6.8 Ablation Study
+
+We conducted ablation tests on the pipeline to isolate the performance contributions of its two major architectural additions: the DistilBERT triage gate and the two-pass hallucination self-correction loop.
+
+Removing the Triage Gate:
+When bypassing the 15ms DistilBERT classifier and running the 14s Qwen extraction pass on every document (a 100% positive rate assumption), pipeline latency increased by approximately 500% over a standard operational news feed (which typically contains ~20% genuine events). Removing the gate provides a marginal increase in absolute recall (recovering the <1% of events DistilBERT falsely filters) but at a catastrophic compute cost.
+
+Removing the Self-Correction Loop:
+The two-pass hallucination correction loop acts as a deterministic factual grounding filter. When evaluated without the second pass, the pipeline's Arguments F1 score dropped notably as hallucinated entity spans (such as extracting union names instead of operators) were allowed to persist in the final output. The 10s latency penalty of the second pass is an essential trade-off for preserving data integrity in the free-text arguments.
+
 7. LoRA Adapter Analysis
 
 7.1 Parameter statistics
@@ -465,10 +497,6 @@ Lesson 5: Error modes switch from structural to semantic with constrained decodi
 
 An unconstrained extraction system (i.e., one that outputs dictionaries directly) has many error modes that can be easily detected. For instance, incorrect JSON formatting, invalid dictionary keys, or unsupported enum values clearly signal extraction errors. In contrast, a constrained decoding system such as the current one does not exhibit such obvious error modes. Decoding errors (e.g., invalid enum values) are prevented by the constraints, but semantic errors (e.g., incorrectly labeled events) are much harder to detect automatically. Thus, while such a system is less likely to have obviously wrong outputs, it can have severe semantic errors that require manual inspection. The overall error rate is probably similar to unconstrained decoding but with different error modes. Hence, the F1 scores against gold-standard annotations should be used to evaluate the system.
 
-Lesson 6: Class collapse may occur due to semantic ambiguity
-
-Despite the balanced representation of classes in the training set, the ShipmentDelay class was completely collapsed (0 predicted vs 6 gold) in favor of the more generic FacilityHalt class (12 predicted vs 6 gold). This suggests that the training set may have insufficient positive examples of ShipmentDelay relative to FacilityHalt to induce competition between them. Specifically, the two event classes may share certain lexical triggers (“port”, “delay”, “disruption”) that are stronger in FacilityHalt making it the preferred choice in all ambiguous cases. The fact that there were no positive examples of ShipmentDelay in the test set may exacerbate the problem, but it is unlikely to be the sole cause. A similar issue may arise with other classes that share lexical triggers.
-
 Lesson 7: Cascading effects dominate error modes in two-stage pipelines
 
 When the high-recall triage component passes false positives to the Qwen, those get encoded as noise in the training data. This explains why most errors in the Qwen are of the “pushed false positives” variety. The triage schema only has a “No event” category, but the Qwen was trained exclusively on positive examples. Hence, it has no understanding of what a “no event” document looks like. As a result, it attempts to encode false positives as events even when none are present. Had the triage component been trained to also recognize “no event” cases, it could have filtered them out at the first stage without passing them to Qwen. While the current two-stage approach reduces the number of false positives passed to Qwen, it remains necessary to train Qwen to recognize and handle “hard negative” examples when possible.
@@ -488,6 +516,9 @@ Perplexity analysis as domain adaptation metric. The evaluation of fine-tuned mo
 Threshold calibration for DistilBERT classifier. Currently, the only option available is to rely on the label distribution within the training data (60.6% of positive samples) to define the probability threshold for prediction. It would be beneficial to explicitly calibrate the classifier, for instance, using Platt scaling or isotonic regression, on a held-out validation set. This would allow adjusting the precision-recall trade-off depending on the anticipated distribution of positive samples in the production data.
 
 Force Majeure event classification nuances. It was noted that current training data does not capture the true complexity of the ForceMajeure event type. While it may seem that way, the ForceMajeure label is, in fact, a general term that may pertain to any number of events beyond just acts of God or nature. ForceMajeure should instead be thought of as an overarching category, under which specific causes such as wildfires or labor strikes would fall. A potential way to address this would be to introduce multi-label annotations or revise the event categorization.
+
+
+Domain Generalization. To boost confidence in this two-stage, constrained-decoding architecture, we should replicate this exact flow in an adjacent domain (e.g., healthcare adverse event extraction or financial regulatory filings).
 
 10. Conclusion
 
