@@ -10,7 +10,7 @@ A resource-efficient, two-stage pipeline for detecting and extracting structured
 
 Enterprise organizations monitor large volumes of news and operational documents to detect supply chain risks. Sending every document to a large generative LLM is computationally expensive. This pipeline solves that with a **two-stage triage architecture**:
 
-1. **Stage 1 — Triage (DistilBERT, 66M params):** Fast binary classifier that filters out non-event documents in ~15 ms per chunk on a T4 GPU (or ~71 ms on CPU).
+1. **Stage 1 — Triage (DistilBERT, 66M params):** Fast binary classifier that filters out non-event documents in ~15 ms per chunk on a T4 GPU (with a CPU loading time of ~71 ms).
 2. **Stage 2 — Extraction (Qwen2.5-1.5B + LoRA + Outlines):** Structured JSON event extraction, only triggered for documents that pass triage (~14.3 s per chunk for the extraction pass on CPU).
 
 ### Supported Event Types
@@ -250,7 +250,7 @@ The binary classifier is optimized to prevent false negatives (missed disruption
 - **47.9% relative F1 improvement** over zero-shot baseline (46.81% → 69.24%)
 - **100% schema validity** via Outlines constrained decoding (vs. 23.33% baseline)
 - **~92–99% cost reduction** in production (only ~20% of general incoming documents trigger generative extraction, with the other 80% successfully routed away by DistilBERT)
-- **Efficient Memory Footprint:** The entire pipeline runs within **~1.44 GB RAM** (peak) on standard CPU during inference, and routes triage checks in ~15 ms on a T4 GPU (~71 ms on CPU).
+- **Efficient Memory Footprint:** The entire pipeline runs within **~1.44 GB RAM** (peak) on standard CPU during inference, and routes triage checks in ~15 ms on a T4 GPU (with a CPU loading time of ~71 ms).
 
 ---
 
