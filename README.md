@@ -264,7 +264,7 @@ The binary classifier is optimized to prevent false negatives (missed disruption
 | Target Modules | `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj` |
 | Trainable Parameters | 18.46M (1.196% of base) |
 | Optimizer Memory | ~147.7 MB (vs ~12.3 GB full fine-tuning) |
-| Adapter File Size | 70.5 MB |
+| Adapter File Size | 73.9 MB |
 
 ---
 
