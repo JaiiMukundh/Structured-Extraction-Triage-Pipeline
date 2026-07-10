@@ -274,7 +274,7 @@ The binary classifier is optimized to prevent false negatives (missed disruption
 |---|---|---|---|
 | 1 | 0.1923 | 34.21% | 36.38% |
 | 2 | 0.0492 | 52.05% | 37.56% |
-| 3 | 0.0114 | 76.94% | 68.35% |
+| 3 | ~0.0114 | ~83.97% | ~59.23% |
 
 ---
 
